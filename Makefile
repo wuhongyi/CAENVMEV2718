@@ -29,6 +29,9 @@ INCLUDEDIR =	-I.
 
 OBJS	=	CAENVMEDemoMain.o CAENVMEDemoVme.o console.o
 
+OBJSWU	=       main.o
+
+
 INCLUDES =      console.h  # ../include/CAENVMElib.h ../include/CAENVMEtypes.h ../include/CAENVMEoslib.h
 
 #########################################################################
@@ -42,10 +45,13 @@ $(EXE)	:	$(OBJS)
 		/bin/rm -f $(EXE)
 		$(CC) $(FLAGS) -o $(EXE) $(OBJS) $(DEPLIBS)
 
-$(EXEWU) :     
+$(EXEWU) :	$(OBJSWU)
+		g++ -std=c++11 main.cc $(DEPLIBS) -o $(EXEWU)
 
 $(OBJS)	:	$(INCLUDES) Makefile
 
 %.o	:	%.c
 		$(CC) $(COPTS) $(INCLUDEDIR) -c -o $@ $<
 
+%.o	:	%.cc
+		g++ -std=c++11 $(COPTS)  -c -o $@ $<
