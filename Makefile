@@ -46,7 +46,7 @@ $(EXE)	:	$(OBJS)
 		$(CC) $(FLAGS) -o $(EXE) $(OBJS) $(DEPLIBS)
 
 $(EXEWU) :	$(OBJSWU)
-		g++ -std=c++11 main.cc $(DEPLIBS) -o $(EXEWU)
+		g++ -std=c++11 $(OBJSWU) $(DEPLIBS) -o $(EXEWU)
 
 $(OBJS)	:	$(INCLUDES) Makefile
 

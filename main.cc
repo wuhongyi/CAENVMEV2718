@@ -4,16 +4,18 @@
 // Author: Hongyi Wu(吴鸿毅)
 // Email: wuhongyi@qq.com 
 // Created: 日 7月  2 22:46:18 2017 (+0800)
-// Last-Updated: 一 7月  3 21:17:01 2017 (+0800)
+// Last-Updated: 二 7月  4 14:32:36 2017 (+0800)
 //           By: Hongyi Wu(吴鸿毅)
-//     Update #: 8
+//     Update #: 15
 // URL: http://wuhongyi.cn 
 
 #include <string.h>
 #include <stdlib.h>
 #include <stdio.h>
 #include <stdarg.h>
+#include <cinttypes>
 #include <inttypes.h>
+#include <cstdint>
 #include <stdint.h>
 #include <math.h>
 #include <ctype.h>
@@ -613,7 +615,6 @@ void CaenVmeManual(int32_t BHandle, short first_call)
       man.autoinc = 0 ;  
 	
       // Allocate 32K for the software buffer containing data for blt 
-
       man.buff = (uint32_t *)malloc(16*1024*1024);
       if (man.buff == NULL)
 	{
@@ -624,8 +625,6 @@ void CaenVmeManual(int32_t BHandle, short first_call)
 
   for (;;)
     {
-      dis_main_menu = 0 ;
-
       dis_main_menu = 0 ;
 
       printf("\n     CAEN VME Manual Controller \n\n") ;
@@ -822,7 +821,7 @@ int main(int argc, char *argv[])
       exit(1);
     }
 
-
+  CaenVmeManual(BHandle,1) ;
   
 
   CAENVME_End(BHandle);
