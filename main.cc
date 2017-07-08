@@ -4,9 +4,9 @@
 // Author: Hongyi Wu(吴鸿毅)
 // Email: wuhongyi@qq.com 
 // Created: 日 7月  2 22:46:18 2017 (+0800)
-// Last-Updated: 二 7月  4 14:32:36 2017 (+0800)
+// Last-Updated: 六 7月  8 11:53:22 2017 (+0800)
 //           By: Hongyi Wu(吴鸿毅)
-//     Update #: 15
+//     Update #: 46
 // URL: http://wuhongyi.cn 
 
 #include <string.h>
@@ -19,8 +19,196 @@
 #include <stdint.h>
 #include <math.h>
 #include <ctype.h>
-#include <curses.h>
+#include <unistd.h>
+#include <termios.h>
 #include "CAENVMElib.h"
+
+static int BHandle = -1;
+static struct termios g_old_kbd_mode;
+
+static void cooked(void)
+{
+  tcsetattr(0, TCSANOW, &g_old_kbd_mode);
+}
+
+static void raw(void)
+{
+  static char init;
+  struct termios new_kbd_mode;
+
+  if(init)
+    return;
+  /* put keyboard (stdin, actually) in raw, unbuffered mode */
+  tcgetattr(0, &g_old_kbd_mode);
+  memcpy(&new_kbd_mode, &g_old_kbd_mode, sizeof(struct termios));
+  new_kbd_mode.c_lflag &= ~(ICANON | ECHO);
+  new_kbd_mode.c_cc[VTIME] = 0;
+  new_kbd_mode.c_cc[VMIN] = 1;
+  tcsetattr(0, TCSANOW, &new_kbd_mode);
+  /* when we exit, go back to normal, "cooked" mode */
+  atexit(cooked);
+
+  init = 1;
+}
+
+int getch(void)
+{
+  unsigned char temp;
+
+  raw();
+  /* stdin = fd 0 */
+  if(read(0, &temp, 1) != 1)
+    return 0;
+  return temp;
+
+}
+
+int kbhit()
+{
+  struct timeval timeout;
+  fd_set read_handles;
+  int status;
+  raw();
+  /* check stdin (fd 0) for activity */
+  FD_ZERO(&read_handles);
+  FD_SET(0, &read_handles);
+  timeout.tv_sec = timeout.tv_usec = 0;
+  status = select(0 + 1, &read_handles, NULL, NULL, &timeout);
+  if(status < 0)
+    {
+      printf("select() failed in kbhit()\n");
+      exit(1);
+    }
+  return (status);
+}
+
+//....oooOO0OOooo........oooOO0OOooo........oooOO0OOooo........oooOO0OOooo......
+
+CVOutputRegisterBits choose_ioport(unsigned int ioport)
+{
+  CVOutputRegisterBits outsel;
+  switch(ioport){
+    case 0:
+      outsel = cvOut0Bit ;
+      break;
+    case 1:
+      outsel = cvOut1Bit ;
+      break;
+    case 2:
+      outsel = cvOut2Bit ;
+      break;
+    case 3:
+      outsel = cvOut3Bit ;
+      break;
+    case 4:
+      outsel = cvOut4Bit ;
+      break;
+    default:
+      printf("ATTENTION: ioport Error, set ioport to be 5th!\n");
+      outsel = cvOut4Bit ;
+      break;
+  }
+  return outsel;
+}
+
+/* This function: set the front panel output propagate on software appointment
+ * ioport: 0-4 --> 1st-5th LEMO output of V2718
+ * polarity: 0 Normal, 1 Inverted
+ * ledpol : 0 LED emits on signal high level, 1 on low level
+ */
+int v2718_init_ioport(unsigned int ioport, unsigned int polarity, unsigned int ledpol)
+{
+  CVOutputSelect outsel;
+  CVIOPolarity outpol;
+  CVLEDPolarity LEDpol;
+  CVIOSources source = cvManualSW;
+  switch(ioport){
+    case 0:
+      outsel = cvOutput0;
+      break;
+    case 1:
+      outsel = cvOutput1;
+      break;
+    case 2:
+      outsel = cvOutput2;
+      break;
+    case 3:
+      outsel = cvOutput3;
+      break;
+    case 4:
+      outsel = cvOutput4;
+      break;
+    default:
+      printf("ATTENTION: ioport Error, set ioport to be 5th!\n");
+      outsel = cvOutput4;
+      break;
+  }
+  if(!polarity) outpol = cvDirect;
+  else outpol = cvInverted;
+  if(!ledpol) LEDpol = cvActiveHigh;
+  else LEDpol = cvActiveLow;
+
+  return (int)((CVErrorCodes)CAENVME_SetOutputConf(BHandle, outsel, outpol, LEDpol, source));
+}
+
+/* set 4th output to moniter BERR signal */
+int v2718_mon_berr(void)
+{
+  return (int)((CVErrorCodes)CAENVME_SetOutputConf(BHandle, cvOutput3, cvDirect, cvActiveHigh, cvVMESignals));
+}
+
+/* set the ioport to be permanent ground level */
+int v2718_clear_ioport(unsigned int ioport)
+{
+  CVOutputRegisterBits outsel;
+  outsel = choose_ioport(ioport);
+
+  return (int)((CVErrorCodes)CAENVME_ClearOutputRegister(BHandle, outsel));
+}
+
+/* Set the ioport to be permanent signal level */
+int v2718_set_ioport(unsigned int ioport)
+{
+  CVOutputRegisterBits outsel;
+  outsel = choose_ioport(ioport);
+
+  return (int)((CVErrorCodes)CAENVME_SetOutputRegister(BHandle, outsel));
+}
+
+/* generate a pulse at specific ioport */
+int v2718_pulse_ioport(unsigned int ioport)
+{
+  CVOutputRegisterBits outsel;
+  outsel = choose_ioport(ioport);
+
+  return (int)((CVErrorCodes)CAENVME_PulseOutputRegister(BHandle, outsel));
+}
+
+/* Set the front panel lemo output 1 or 2 to generate pulese
+ * ioport: 0-->1
+ * period: 0-->255
+ * width:  0-->255
+ * unit:   0-->4: 25ns,1.6us,410us, 104ms
+ * pulserno: 0 --> infinite 1-255
+ */
+int v2718_pulsea_configure(unsigned int ioport, unsigned int period, unsigned int width, unsigned int unit, unsigned int pulseno){
+  if(ioport>1) ioport=1;
+  if(width>period) width=period;
+
+  CAENVME_SetOutputConf(BHandle, (CVOutputSelect)ioport, cvDirect, cvActiveHigh, cvMiscSignals);
+  return (int)((CVErrorCodes)CAENVME_SetPulserConf(BHandle, cvPulserA, period, width, (CVTimeUnits)unit, pulseno, cvManualSW,cvManualSW));
+}
+
+int v2718_start_pulsea(){
+  return (int)((CVErrorCodes)CAENVME_StartPulser(BHandle, cvPulserA));
+}
+
+int v2718_stop_pulsea(){
+  return (int)((CVErrorCodes)CAENVME_StopPulser(BHandle,cvPulserA));
+}
+
+
+
 //....oooOO0OOooo........oooOO0OOooo........oooOO0OOooo........oooOO0OOooo......
 
 typedef struct man_par
@@ -37,52 +225,6 @@ typedef struct man_par
   ushort		autoinc ;	// Auto increment address
   uint32_t	*buff ;         // Mmemory buffer for blt
 } man_par_t ;
-
-
-/******************************************************************************/
-/*                               CON_KBHIT                                    */
-/*----------------------------------------------------------------------------*/
-/* return:        0  ->  no key pressed                                       */
-/*                c  ->  ascii code of pressed key                            */
-/*----------------------------------------------------------------------------*/
-/* Read the standard input buffer; if it is empty, return 0 else read and     */
-/* return the ascii code of the first char in the buffer. A call to this      */
-/* function doesn't stop the program if the input buffer is empty.            */
-/******************************************************************************/
-char con_kbhit()
-{
-  int i, g;  
-  
-  nodelay(stdscr, TRUE);
-  i = ( ( g = getch() ) == ERR ? 0 : g );
-  nodelay(stdscr, FALSE);
-
-  return i;   
-}
-
-/******************************************************************************/
-/*                               CON_GETCH                                    */
-/*----------------------------------------------------------------------------*/
-/* return:        c  ->  ascii code of pressed key                            */
-/*----------------------------------------------------------------------------*/
-/* Get a char from the console without echoing                                */
-/* return the character read                                                  */
-/******************************************************************************/
-int  con_getch(void)
-{
-  int i;
-  
-  while( ( i = getch() ) == ERR );
-  return i; 
-}
-
-
-
-
-
-
-
-
 
 /*	
 	-----------------------------------------------------------------------------
@@ -117,7 +259,7 @@ void CaenVmeIrqCheck(int32_t BHandle, man_par_t *man)
 
   printf(" Waiting for interrupt ... Press any key to stop.\n");
 
-  while (!(man->irqstat & (1<<(man->level-1))) && !con_kbhit())   // Check Int loop
+  while (!(man->irqstat & (1<<(man->level-1))) && !kbhit())   // Check Int loop
     CAENVME_IRQCheck(BHandle,&man->irqstat);
 
 
@@ -229,7 +371,7 @@ void CaenVmeWriteBlt(int32_t BHandle, man_par_t *man)
   if(man->ncyc == 0)				// Infinite Loop
     printf(" Running ...    Press any key to stop.");
 
-  for (i=0; ((man->ncyc==0) || (i<man->ncyc)) && !con_kbhit(); i++)
+  for (i=0; ((man->ncyc==0) || (i<man->ncyc)) && !kbhit(); i++)
     {
       ret = CAENVME_BLTWriteCycle(BHandle,man->addr,(char *)man->buff,man->blts,am,man->dtsize,&nb);
         		
@@ -307,7 +449,7 @@ void CaenVmeReadBlt(int32_t BHandle, man_par_t *man)
   if(man->ncyc == 0)				// Infinite Loop
     printf(" Running ...    Press any key to stop.");
 
-  for (i=0; ((man->ncyc==0) || (i<man->ncyc)) && !con_kbhit(); i++)
+  for (i=0; ((man->ncyc==0) || (i<man->ncyc)) && !kbhit(); i++)
     {
       for (j=0;j<(man->blts/4);j++)
 	man->buff[j]=0;
@@ -366,7 +508,7 @@ void CaenVmeWrite(int32_t BHandle, man_par_t *man)
   if(man->ncyc == 0)				// Infinite Loop
     printf(" Running ...    Press any key to stop.");
 
-  for (i=0; ((man->ncyc==0) || (i<man->ncyc)) && !con_kbhit(); i++)
+  for (i=0; ((man->ncyc==0) || (i<man->ncyc)) && !kbhit(); i++)
     {
       ret = CAENVME_WriteCycle(BHandle,man->addr,&man->data,(CVAddressModifier)man->am,man->dtsize);
 
@@ -425,7 +567,7 @@ void CaenVmeRead(int32_t BHandle, man_par_t *man)
   if(man->ncyc == 0)				// Infinite Loop
     printf(" Running ...    Press any key to stop.");
 
-  for (i=0; ((man->ncyc==0) || (i<man->ncyc)) && !con_kbhit(); i++)
+  for (i=0; ((man->ncyc==0) || (i<man->ncyc)) && !kbhit(); i++)
     {
       ret = CAENVME_ReadCycle(BHandle,man->addr,&man->data,(CVAddressModifier)man->am,man->dtsize);
 
@@ -524,7 +666,7 @@ void ViewReadBltData(man_par_t *man)
       if( i != ndata )
         printf("  [N] Next");
 
-      key=toupper(con_getch()) ;              // Wait for command
+      key=toupper(getch()) ;              // Wait for command
 
       switch (key)
 	{
@@ -580,9 +722,6 @@ void ViewReadBltData(man_par_t *man)
     } 
 }
 
-
-
-
 /*	
 	-----------------------------------------------------------------------------
 
@@ -607,7 +746,7 @@ void CaenVmeManual(int32_t BHandle, short first_call)
     {								// Default Value 
       man.addr = 0xEE000000 ;      
       man.level = 1 ;           
-      man.am = cvA32_U_DATA ;            
+      man.am = cvA32_U_DATA ;//0x09            
       man.dtsize = cvD16 ;        
       man.basaddr = 0xEE000000 ; 
       man.blts = 256 ;          
@@ -629,6 +768,8 @@ void CaenVmeManual(int32_t BHandle, short first_call)
 
       printf("\n     CAEN VME Manual Controller \n\n") ;
 
+      printf(" P - generate a pulse at ioport 2\n");
+      
       printf(" R - READ\n") ;
       printf(" W - WRITE\n") ;
       printf(" B - BLOCK TRANSFER READ\n") ;
@@ -673,12 +814,15 @@ void CaenVmeManual(int32_t BHandle, short first_call)
       printf(" F - FRONT PANEL I/O\n") ; 
       printf(" Q - QUIT MANUAL CONTROLLER\n") ; 
 
-      do
-	{
-	  key = toupper(con_getch()) ;
+      // do
+      // 	{
+	  key = toupper(getch()) ;
 
 	  switch (key)  
 	    {
+	    case 'P' : v2718_pulse_ioport(2);v2718_pulse_ioport(2);
+	      break;
+	      
 	    case  'R' :	CaenVmeRead(BHandle, &man) ;
 	      break ;	
 
@@ -794,10 +938,13 @@ void CaenVmeManual(int32_t BHandle, short first_call)
 	      return ;			
 	    default   : break ;
 	    }
-	}
-      while (!dis_main_menu) ;
+      // 	}
+      // while (!dis_main_menu) ;
     }										// End 'for(;;)' 
 }
+
+//....oooOO0OOooo........oooOO0OOooo........oooOO0OOooo........oooOO0OOooo......
+
 
 
 
@@ -808,7 +955,7 @@ int main(int argc, char *argv[])
   CVBoardTypes  VMEBoard;
   short         Link;
   short         Device;
-  int32_t       BHandle;
+  // int32_t       BHandle;
 
   Device = 0;
   Link = 0;
@@ -821,11 +968,21 @@ int main(int argc, char *argv[])
       exit(1);
     }
 
-  CaenVmeManual(BHandle,1) ;
+  v2718_init_ioport(0,0,0);
+  v2718_pulsea_configure(0,3,1,0,0);
+  v2718_start_pulsea();
+
+  v2718_init_ioport(2,0,0);
+  v2718_mon_berr();
   
+  CaenVmeManual(BHandle,1);
+  
+  v2718_stop_pulsea();
+  v2718_clear_ioport(0);
+  v2718_clear_ioport(2);
 
   CAENVME_End(BHandle);
-  
+
   return 0;
 }
 

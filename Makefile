@@ -10,10 +10,9 @@
 #                                                                      
 ########################################################################
 
-EXE	=	caen
 EXEWU   =       pku
 
-CC	=	gcc
+GCC	=	g++
 
 COPTS	=	-fPIC -DLINUX -Wall 
 #COPTS	=	-g -fPIC -DLINUX -Wall 
@@ -21,37 +20,29 @@ COPTS	=	-fPIC -DLINUX -Wall
 FLAGS	=	-Wall -s
 #FLAGS	=	-Wall
 
-DEPLIBS	=       -l CAENVME -l ncurses -lc -lm
+DEPLIBS	=       -l CAENVME -l curses -lc -lm
 
 LIBS	=	
 
 INCLUDEDIR =	-I.
 
-OBJS	=	CAENVMEDemoMain.o CAENVMEDemoVme.o console.o
-
 OBJSWU	=       main.o
 
-
-INCLUDES =      console.h  # ../include/CAENVMElib.h ../include/CAENVMEtypes.h ../include/CAENVMEoslib.h
+INCLUDES =      
 
 #########################################################################
 
-all	:	$(EXE) $(EXEWU)
+all	:	$(EXEWU)
 
 clean	:
-		/bin/rm -f $(OBJS) $(EXE) $(EXEWU)
+		/bin/rm -f *.o $(EXEWU)
 
-$(EXE)	:	$(OBJS)
-		/bin/rm -f $(EXE)
-		$(CC) $(FLAGS) -o $(EXE) $(OBJS) $(DEPLIBS)
 
 $(EXEWU) :	$(OBJSWU)
-		g++ -std=c++11 $(OBJSWU) $(DEPLIBS) -o $(EXEWU)
+		$(GCC) -std=c++11 $(OBJSWU) $(DEPLIBS) -o $(EXEWU)
 
 $(OBJS)	:	$(INCLUDES) Makefile
 
-%.o	:	%.c
-		$(CC) $(COPTS) $(INCLUDEDIR) -c -o $@ $<
 
 %.o	:	%.cc
-		g++ -std=c++11 $(COPTS)  -c -o $@ $<
+		$(GCC) -std=c++11 $(COPTS)  -c -o $@ $<
